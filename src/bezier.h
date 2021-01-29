@@ -120,13 +120,13 @@ namespace bezier {
 
     types::pcc_t MovePoint(types::pcc_t f, types::node_index_t i, types::real_t x, types::real_t y) {
         return [x, y, f, i](types::node_index_t j){
-            return i == j ? f(i) + types::point_2d(x, y) : f(i);
+            return (i == j) ? (f(j) + types::point_2d(x, y)) : f(j);
         };
     }
 
     types::pcc_t Rotate(types::pcc_t f, types::real_t a) {
-        const double sin_a = std::sin(a / (2 * constants::PI));
-        const double cos_a = std::cos(a / (2 * constants::PI));
+        const double sin_a = std::sin(a * constants::PI / 180.0);
+        const double cos_a = std::cos(a * constants::PI / 180.0);
         return [f, sin_a, cos_a](types::node_index_t i){
             const types::point_2d p = f(i);
             return types::point_2d(p.X * cos_a - p.Y * sin_a, p.X * sin_a + p.Y * cos_a);
@@ -173,9 +173,9 @@ namespace bezier {
         }
 
         void draw_segment(types::pcc_t fn, int k, int j) {
-            types::real_t s = (types::real_t)2 / (types::real_t)k;
+            types::real_t s = (types::real_t)1 / (types::real_t)k;
             for (int i = 0; i < k; i++) {
-                types::point_2d a = (*this)(fn, s * i - 1, j);
+                types::point_2d a = (*this)(fn, s * i, j);
                 if (a.X <= 1 && a.X >= -1 && a.Y <= 1 && a.Y >= -1) {
 
                     set_cell((a.X + 1) * _r / 2, (a.Y + 1) * _r / 2, true);
@@ -184,10 +184,8 @@ namespace bezier {
         }
 
         types::pcc_t find_point(types::pcc_t fn, types::real_t t, types::node_index_t num) {
-            using constants::NUM_OF_CUBIC_BEZIER_NODES;
-
             types::pcc_t p;
-            if (num == NUM_OF_CUBIC_BEZIER_NODES) {
+            if (num == constants::NUM_OF_CUBIC_BEZIER_NODES - 1) {
                 p = fn;
             } else {
                 p = find_point(fn, t, num + 1);
@@ -207,13 +205,13 @@ namespace bezier {
             }
         }
         void Print(std::ostream &os = std::cout, char fb = '*', char bg = ' ') const {
-            for (std::size_t i = 0; i < _r * _r; i++) {
-                os << (_arr[i] ? fb : bg);
-                if (i % _r == _r - 1) {
-                    os << "\n";
+            for (std::size_t i = 0; i < _r; i++) {
+                for (std::size_t j = 0; j < _r; j++) {
+                    os << (_arr[ (_r - i - 1) * _r + j ] ? fb : bg);
                 }
+                os << "\n";
             }
-            std::cout << "DONE" << std::endl;
+
         }
         types::point_2d operator()(types::pcc_t fn, types::real_t t, types::node_index_t i) {
             using constants::NUM_OF_CUBIC_BEZIER_NODES;
