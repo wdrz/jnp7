@@ -11,8 +11,6 @@ namespace bezier {
 
     namespace types {
         class point_2d;
-        class special_fn;
-
         using real_t = double;
         using node_index_t = unsigned int;
         using pcc_t = std::function<point_2d(node_index_t)>;
@@ -55,67 +53,61 @@ namespace bezier {
         }
     }
 
-    // TODO: change this function so that it uses the constant
+    types::pcc_t special_fn() {
+        return [](types::node_index_t)->types::point_2d{
+            throw std::out_of_range("a curve node index is out of range");
+        };
+    }
 
-    class types::special_fn {
-    private:
-        const std::vector<point_2d> _pts;
-    public:
-        special_fn(std::initializer_list<point_2d> pts): _pts{pts} {
-            if (_pts.size() != constants::NUM_OF_CUBIC_BEZIER_NODES) {
-                throw std::invalid_argument("a wrong number of cubic bezier nodes");
-            }
-        }
+    template<typename T, typename... Args>
+    types::pcc_t special_fn(T t, Args... args) {
+        return [t, args...](types::node_index_t i){
+            return i == 0 ? t : special_fn(args...)(i - 1);
+        };
+    }
 
-        point_2d operator()(node_index_t i) const {
-            if (i >= constants::NUM_OF_CUBIC_BEZIER_NODES) {
-                throw std::out_of_range("a curve node index is out of range");
-            }
-            return _pts[i];
-        }
-    };
 
     types::pcc_t Cup() {
-        return types::special_fn {{
+        return special_fn(
               types::point_2d(-1, 1),
               types::point_2d(-1, -1),
               types::point_2d(1, -1),
               types::point_2d(1, 1)
-        }};
+        );
     }
 
 
     types::pcc_t Cap() {
-        return types::special_fn {{
+        return special_fn(
               types::point_2d(-1, -1),
               types::point_2d(-1, 1),
               types::point_2d(1, 1),
               types::point_2d(1, -1)
-        }};
+        );
     }
 
 
 
     types::pcc_t ConvexArc() {
-        return types::special_fn {{
+        return special_fn(
               types::point_2d(0, 1),
               types::point_2d(constants::ARC, 1),
               types::point_2d(1, constants::ARC),
               types::point_2d(1, 0)
-        }};
+        );
     }
 
     types::pcc_t ConcaveArc() {
-        return types::special_fn {{
+        return special_fn(
               types::point_2d(0, 1),
               types::point_2d(0, 1 - constants::ARC),
               types::point_2d(1 - constants::ARC, 0),
               types::point_2d(1, 0)
-        }};
+        );
     }
 
     types::pcc_t LineSegment(types::point_2d p, types::point_2d q) {
-        return types::special_fn{{p, p, q, q}};
+        return special_fn(p, p, q, q);
     }
 
     types::pcc_t MovePoint(types::pcc_t f, types::node_index_t i, types::real_t x, types::real_t y) {
@@ -147,12 +139,9 @@ namespace bezier {
     }
 
     types::pcc_t operator*(types::pcc_t f1, types::pcc_t f2) {
+        constexpr int CBN = constants::NUM_OF_CUBIC_BEZIER_NODES;
         return [f1, f2](types::node_index_t i){
-            if (i < constants::NUM_OF_CUBIC_BEZIER_NODES) {
-                return f1(i);
-            } else {
-                return f2(i - constants::NUM_OF_CUBIC_BEZIER_NODES);
-            }
+            return i < CBN ? f1(i) : f2(i - CBN);
         };
     }
 
@@ -173,25 +162,21 @@ namespace bezier {
         }
 
         void draw_segment(types::pcc_t fn, int k, int j) {
-            types::real_t s = (types::real_t)1 / (types::real_t)k;
+            types::real_t s = (types::real_t)1 / ((types::real_t)k * 2);
             for (int i = 0; i < k; i++) {
-                types::point_2d a = (*this)(fn, s * i, j);
+                types::point_2d a = (*this)(fn, s * (2 * i + 1), j + 1);
                 if (a.X <= 1 && a.X >= -1 && a.Y <= 1 && a.Y >= -1) {
 
-                    set_cell((a.X + 1) * _r / 2, (a.Y + 1) * _r / 2, true);
+                    set_cell(std::floor((a.X + 1) * _r / 2),
+                             std::floor((a.Y + 1) * _r / 2), true);
                 }
             }
         }
 
-        types::pcc_t find_point(types::pcc_t fn, types::real_t t, types::node_index_t num) {
-            types::pcc_t p;
-            if (num == constants::NUM_OF_CUBIC_BEZIER_NODES - 1) {
-                p = fn;
-            } else {
-                p = find_point(fn, t, num + 1);
-            }
-
-            return [t, p](types::node_index_t i){
+        types::pcc_t find_point(types::pcc_t fn, types::real_t t, types::node_index_t num) const {
+            constexpr int CBN = constants::NUM_OF_CUBIC_BEZIER_NODES;
+            types::pcc_t p = (num == CBN - 1 ? fn : find_point(fn, t, num + 1));
+            return [t, p](auto i){
                 return (1 - t) * p(i) + t * p(i + 1);
             };
         }
@@ -200,8 +185,9 @@ namespace bezier {
     public:
         P3CurvePlotter(types::pcc_t fn, types::node_index_t seg = 1, std::size_t r = 80) : _arr(r * r), _r(r){
             _arr.resize(r * r);
+            size_t sq = r * r;
             for (types::node_index_t i = 0; i < seg; i++) {
-                draw_segment(fn, r * r / seg, i);
+                draw_segment(fn, sq / seg + (int)(i < (sq % seg)), i);
             }
         }
         void Print(std::ostream &os = std::cout, char fb = '*', char bg = ' ') const {
@@ -213,12 +199,9 @@ namespace bezier {
             }
 
         }
-        types::point_2d operator()(types::pcc_t fn, types::real_t t, types::node_index_t i) {
-            using constants::NUM_OF_CUBIC_BEZIER_NODES;
-            types::pcc_t p = [i, fn](types::node_index_t j){
-                return fn(i * NUM_OF_CUBIC_BEZIER_NODES + j);
-            };
-            return find_point(p, t, 1)(0);
+        types::point_2d operator()(types::pcc_t fn, types::real_t t, types::node_index_t i) const {
+            constexpr int CBN = constants::NUM_OF_CUBIC_BEZIER_NODES;
+            return find_point([i, fn](auto j){ return fn((i - 1) * CBN + j); }, t, 1)(0);
         }
     };
 
